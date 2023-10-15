@@ -4,7 +4,7 @@ use chrono::{DateTime, NaiveDate, NaiveDateTime, NaiveTime, Utc};
 use eyre::{eyre, ContextCompat, Result};
 use nom::{
     branch::alt,
-    character::complete::{self, multispace0, space0, multispace1},
+    character::complete::{self, space0 },
     combinator::{self, all_consuming},
     multi::many1,
     sequence::{preceded, terminated},
@@ -13,13 +13,13 @@ use nom::{
 
 use crate::model::{Lease, LeaseTime, MacAddr};
 
-use super::{val_string, keyword_hardware_ethernet, val_address};
+use super::{val_string, keyword_hardware_ethernet, val_address, anyspace0, anyspace1};
 
 #[derive(Debug, PartialEq)]
 enum LeaseFileItem {
-    Comment(String),
     AuthoringByteOrder(ByteOrder),
     Lease(Ipv4Addr, Vec<LeaseField>),
+    ServerDuid(String),
 }
 
 #[derive(Debug, PartialEq)]
@@ -44,7 +44,7 @@ enum LeaseField {
 }
 
 pub fn parse(input: &str) -> Result<Vec<Lease>> {
-    let (_, lease_file_items) = all_consuming(leases)(input)
+    let (_, lease_file_items) = all_consuming(lease_file_items)(input)
         .finish()
         .map_err(|e| eyre!("parse error: {}", e))?;
     let mut leases = Vec::new();
@@ -94,46 +94,49 @@ pub fn parse(input: &str) -> Result<Vec<Lease>> {
     Ok(leases)
 }
 
-fn leases(input: &str) -> IResult<&str, Vec<LeaseFileItem>> {
+fn lease_file_items(input: &str) -> IResult<&str, Vec<LeaseFileItem>> {
     let (input, items) = many1(preceded(
-        multispace0,
-        alt((comment, authoring_byte_order, lease)),
+        anyspace0,
+        alt((authoring_byte_order, server_duid, lease)),
     ))(input)?;
     Ok((input, items))
 }
 
-fn comment(input: &str) -> IResult<&str, LeaseFileItem> {
-    let (input, _) = complete::char('#')(input)?;
-    let (input, comment) = complete::not_line_ending(input)?;
-    let (input, _) = multispace0(input)?;
-    Ok((input, LeaseFileItem::Comment(comment.to_string())))
+fn server_duid(input: &str) -> IResult<&str, LeaseFileItem> {
+    let (input, _) = bytes::complete::tag("server-duid")(input)?;
+    let (input, _) = anyspace1(input)?;
+    let (input, s) = val_string(input)?;
+    let (input, _) = anyspace0(input)?;
+    let (input, _) = complete::char(';')(input)?;
+    let (input, _) = anyspace0(input)?;
+    Ok((input, LeaseFileItem::ServerDuid(s)))
 }
 
 fn lease(input: &str) -> IResult<&str, LeaseFileItem> {
-    let (input, _) = multispace0(input)?;
+    let (input, _) = anyspace0(input)?;
     let (input, _) = bytes::complete::tag("lease")(input)?;
-    let (input, _) = multispace1(input)?;
+    let (input, _) = anyspace1(input)?;
     let (input, address) = val_address(input)?;
-    let (input, _) = multispace0(input)?;
+    let (input, _) = anyspace0(input)?;
     let (input, _) = complete::char('{')(input)?;
-    let (input, _) = multispace0(input)?;
+    let (input, _) = anyspace0(input)?;
     let (input, fields) = many1(lease_field)(input)?;
-    let (input, _) = multispace0(input)?;
+    let (input, _) = anyspace0(input)?;
     let (input, _) = complete::char('}')(input)?;
-    let (input, _) = multispace0(input)?;
+    let (input, _) = anyspace0(input)?;
     Ok((input, LeaseFileItem::Lease(address, fields)))
 }
 
 fn authoring_byte_order(input: &str) -> IResult<&str, LeaseFileItem> {
     let (input, _) = bytes::complete::tag("authoring-byte-order")(input)?;
-    let (input, _) = multispace1(input)?;
+    let (input, _) = anyspace1(input)?;
     let (input, byte_order) = alt((
         bytes::complete::tag("little-endian"),
         bytes::complete::tag("big-endian"),
     ))(input)?;
-    let (input, _) = multispace0(input)?;
+    let (input, _) = anyspace0(input)?;
     let (input, _) = complete::char(';')(input)?;
-    let (input, _) = multispace0(input)?;
+    let (input, _) = anyspace0(input)?;
     let byte_order = match byte_order {
         "little-endian" => ByteOrder::LittleEndian,
         "big-endian" => ByteOrder::BigEndian,
@@ -143,7 +146,7 @@ fn authoring_byte_order(input: &str) -> IResult<&str, LeaseFileItem> {
 }
 
 fn lease_field(input: &str) -> IResult<&str, LeaseField> {
-    let (input, _) = multispace0(input)?;
+    let (input, _) = anyspace0(input)?;
     let (input, field) = alt((
         field_starts,
         field_ends,
@@ -155,9 +158,9 @@ fn lease_field(input: &str) -> IResult<&str, LeaseField> {
         field_vendor_class_identifier,
         binding_state,
     ))(input)?;
-    let (input, _) = multispace0(input)?;
+    let (input, _) = anyspace0(input)?;
     let (input, _) = complete::char(';')(input)?;
-    let (input, _) = multispace0(input)?;
+    let (input, _) = anyspace0(input)?;
     Ok((input, field))
 }
 
@@ -279,7 +282,7 @@ fn field_vendor_class_identifier(input: &str) -> IResult<&str, LeaseField> {
     let (input, _) = bytes::complete::tag("vendor-class-identifier")(input)?;
     let (input, _) = space0(input)?;
     let (input, _) = complete::char('=')(input)?;
-    let (input, _) = multispace0(input)?;
+    let (input, _) = anyspace0(input)?;
     let (input, s) = val_string(input)?;
 
     Ok((input, LeaseField::VendorClassIdentifier(s)))
