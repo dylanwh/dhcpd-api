@@ -56,7 +56,6 @@ fn str_char_escape(input: &str) -> IResult<&str, String> {
 }
 
 fn str_literal(input: &str) -> IResult<&str, String> {
-    // not a \ or "
     let (input, s) = bytes::complete::take_while1(|c| c != '\\' && c != '"')(input)?;
 
     Ok((input, s.to_string()))
@@ -76,7 +75,7 @@ static HEX: &str = "0123456789abcdef";
 fn val_hexbyte(input: &str) -> IResult<&str, u8> {
     let (input, byte) = multi::count(streaming::one_of(HEX), 2)(input)?;
     let byte = byte.iter().collect::<String>();
-    // handle with convert_error
+
     u8::from_str_radix(&byte, 16).map_or_else(
         |_| {
             Err(nom::Err::Error(nom::error::Error::new(
@@ -141,15 +140,12 @@ fn anyspace(input: &str) -> IResult<&str, &str> {
     Ok((input, ""))
 }
 
-// zero or more spaces or comments
-
 fn anyspace0(input: &str) -> IResult<&str, &str> {
     let (input, _) = multi::many0(alt((anyspace, comment)))(input)?;
 
     Ok((input, ""))
 }
 
-// at least one space or comment
 fn anyspace1(input: &str) -> IResult<&str, &str> {
     let (input, _) = multi::many1(alt((anyspace, comment)))(input)?;
 

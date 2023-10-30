@@ -383,7 +383,6 @@ fn val_directive_name(input: &str) -> IResult<&str, String> {
     Ok((input, s.to_string()))
 }
 
-// [A-Za-z0-9_-]+
 fn val_identifier(input: &str) -> IResult<&str, String> {
     let (input, s) =
         bytes::streaming::take_while1(|c| is_alphanumeric(c as u8) || c == '_' || c == '-')(input)?;

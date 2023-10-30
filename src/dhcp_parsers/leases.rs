@@ -218,8 +218,6 @@ fn val_datetime(input: &str) -> IResult<&str, Option<NaiveDateTime>> {
     Ok((input, Some(datetime)))
 }
 
-//        wday date       time
-// starts 0    2022/11/20 21:27:34;
 fn field_starts(input: &str) -> IResult<&str, LeaseField> {
     let (input, _) = bytes::complete::tag("starts")(input)?;
     let (input, _) = space0(input)?;
