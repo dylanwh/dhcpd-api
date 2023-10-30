@@ -4,7 +4,7 @@ use clap::Parser;
 
 #[derive(Debug, Parser)]
 #[command(author, version, about)]
-pub(crate) struct Args {
+pub struct Args {
     #[arg(long, default_value = "/var/dhcpd/var/db/dhcpd.leases")]
     pub dhcpd_leases: PathBuf,
 

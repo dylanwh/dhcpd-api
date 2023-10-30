@@ -4,16 +4,17 @@ use chrono::{DateTime, NaiveDate, NaiveDateTime, NaiveTime, Utc};
 use eyre::{eyre, ContextCompat, Result};
 use nom::{
     branch::alt,
-    character::complete::{self, space0 },
+    bytes,
+    character::complete::{self, space0},
     combinator::{self, all_consuming},
     multi::many1,
     sequence::{preceded, terminated},
-    Finish, IResult, bytes,
+    Finish, IResult,
 };
 
 use crate::model::{Lease, LeaseTime, MacAddr};
 
-use super::{val_string, keyword_hardware_ethernet, val_address, anyspace0, anyspace1};
+use super::{anyspace0, anyspace1, keyword_hardware_ethernet, val_address, val_string};
 
 #[derive(Debug, PartialEq)]
 enum LeaseFileItem {
@@ -60,16 +61,16 @@ pub fn parse(input: &str) -> Result<Vec<Lease>> {
             for field in fields {
                 match field {
                     LeaseField::Starts(t) => {
-                        starts = t.map(|t| DateTime::from_naive_utc_and_offset(t, Utc))
+                        starts = t.map(|t| DateTime::from_naive_utc_and_offset(t, Utc));
                     }
                     LeaseField::Ends(t) => {
-                        ends = t.map(|t| DateTime::from_naive_utc_and_offset(t, Utc))
+                        ends = t.map(|t| DateTime::from_naive_utc_and_offset(t, Utc));
                     }
                     LeaseField::Tstp(t) => {
-                        tstp = t.map(|t| DateTime::from_naive_utc_and_offset(t, Utc))
+                        tstp = t.map(|t| DateTime::from_naive_utc_and_offset(t, Utc));
                     }
                     LeaseField::Cltt(t) => {
-                        cltt = t.map(|t| DateTime::from_naive_utc_and_offset(t, Utc))
+                        cltt = t.map(|t| DateTime::from_naive_utc_and_offset(t, Utc));
                     }
                     LeaseField::HardwareEthernet(addr) => hardware_ethernet = Some(addr),
                     LeaseField::ClientHostname(hostname) => client_hostname = Some(hostname),
@@ -87,7 +88,7 @@ pub fn parse(input: &str) -> Result<Vec<Lease>> {
                     .wrap_err(eyre!("lease missing hardware ethernet"))?,
                 client_hostname,
             };
-            leases.push(lease)
+            leases.push(lease);
         }
     }
 
@@ -156,7 +157,7 @@ fn lease_field(input: &str) -> IResult<&str, LeaseField> {
         field_client_hostname,
         field_uid,
         field_vendor_class_identifier,
-        binding_state,
+        field_binding_state,
     ))(input)?;
     let (input, _) = anyspace0(input)?;
     let (input, _) = complete::char(';')(input)?;
@@ -179,7 +180,6 @@ fn val_date(input: &str) -> IResult<&str, NaiveDate> {
 
     Ok((input, date))
 }
-
 
 fn val_time(input: &str) -> IResult<&str, NaiveTime> {
     let (input, hour) = complete::digit1(input)?;
@@ -217,8 +217,6 @@ fn val_datetime(input: &str) -> IResult<&str, Option<NaiveDateTime>> {
 
     Ok((input, Some(datetime)))
 }
-
-
 
 //        wday date       time
 // starts 0    2022/11/20 21:27:34;
@@ -288,8 +286,7 @@ fn field_vendor_class_identifier(input: &str) -> IResult<&str, LeaseField> {
     Ok((input, LeaseField::VendorClassIdentifier(s)))
 }
 
-// take until ;
-fn binding_state(input: &str) -> IResult<&str, LeaseField> {
+fn field_binding_state(input: &str) -> IResult<&str, LeaseField> {
     let (input, prefix) = combinator::opt(terminated(
         alt((bytes::complete::tag("next"), bytes::complete::tag("rewind"))),
         complete::space1,

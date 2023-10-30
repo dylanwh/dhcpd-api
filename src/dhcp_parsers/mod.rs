@@ -3,7 +3,10 @@ use std::net::Ipv4Addr;
 use nom::{
     branch::alt,
     bytes,
-    character::{complete::{self, newline, space1}, streaming},
+    character::{
+        complete::{self, newline, space1},
+        streaming,
+    },
     combinator::{eof, map_res},
     multi::{self, many1},
     IResult,
@@ -26,7 +29,7 @@ fn str_octal_escape(input: &str) -> IResult<&str, String> {
     let (input, s) = multi::count(complete::one_of("01234567"), 3)(input)?;
     let s = s.iter().collect::<String>();
     let s = u8::from_str_radix(&s, 8).unwrap_or_default();
-    let s = std::char::from_u32(s as u32).unwrap_or_default();
+    let s = std::char::from_u32(u32::from(s)).unwrap_or_default();
 
     Ok((input, s.to_string()))
 }
@@ -49,13 +52,7 @@ fn str_char_escape(input: &str) -> IResult<&str, String> {
         _ => None,
     };
 
-    Ok((
-        input,
-        match c {
-            Some(c) => c.to_string(),
-            None => "".to_string(),
-        },
-    ))
+    Ok((input, c.map_or_else(String::new, |c| c.to_string())))
 }
 
 fn str_literal(input: &str) -> IResult<&str, String> {
@@ -79,8 +76,16 @@ static HEX: &str = "0123456789abcdef";
 fn val_hexbyte(input: &str) -> IResult<&str, u8> {
     let (input, byte) = multi::count(streaming::one_of(HEX), 2)(input)?;
     let byte = byte.iter().collect::<String>();
-    let byte = u8::from_str_radix(&byte, 16).expect("Invalid hex byte");
-    Ok((input, byte))
+    // handle with convert_error
+    u8::from_str_radix(&byte, 16).map_or_else(
+        |_| {
+            Err(nom::Err::Error(nom::error::Error::new(
+                input,
+                nom::error::ErrorKind::Digit,
+            )))
+        },
+        |byte| Ok((input, byte)),
+    )
 }
 
 fn val_macaddr(input: &str) -> IResult<&str, MacAddr> {
@@ -153,6 +158,8 @@ fn anyspace1(input: &str) -> IResult<&str, &str> {
 
 #[cfg(test)]
 mod tests {
+    #![allow(clippy::unwrap_used, clippy::expect_used)]
+
     use nom::Finish;
 
     use super::*;

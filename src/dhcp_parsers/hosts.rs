@@ -1,5 +1,3 @@
-
-
 use eyre::Result;
 use nom::{
     branch::alt,
@@ -26,10 +24,18 @@ pub fn parse(input: &str) -> Result<Vec<Host>> {
     let mut hosts = vec![];
 
     for item in items {
-        let Some(fixed_address) = item.fixed_address() else { continue };
-        let Some(hardware_ethernet) = item.hardware_ethernet() else { continue };
+        let Some(fixed_address) = item.fixed_address() else {
+            continue;
+        };
+        let Some(hardware_ethernet) = item.hardware_ethernet() else {
+            continue;
+        };
         let hostname = item.hostname();
-        hosts.push(Host { fixed_address, hardware_ethernet, hostname })
+        hosts.push(Host {
+            fixed_address,
+            hardware_ethernet,
+            hostname,
+        });
     }
 
     Ok(hosts)
@@ -52,18 +58,17 @@ enum HostFileItem {
 }
 
 impl HostFileItem {
-
     #[allow(dead_code)]
     fn label(&self) -> Option<&str> {
         match self {
-            HostFileItem::Host { label, .. } => Some(label),
+            Self::Host { label, .. } => Some(label),
             _ => None,
         }
     }
 
     fn fixed_address(&self) -> Option<Ipv4Addr> {
         match self {
-            HostFileItem::Host { fields, .. } => {
+            Self::Host { fields, .. } => {
                 for field in fields {
                     if let HostField::FixedAddress(ip) = field {
                         return Some(*ip);
@@ -77,7 +82,7 @@ impl HostFileItem {
 
     fn hardware_ethernet(&self) -> Option<MacAddr> {
         match self {
-            HostFileItem::Host { fields, .. } => {
+            Self::Host { fields, .. } => {
                 for field in fields {
                     if let HostField::HardwareEthernet(mac) = field {
                         return Some(mac.clone());
@@ -91,7 +96,7 @@ impl HostFileItem {
 
     fn hostname(&self) -> Option<String> {
         match self {
-            HostFileItem::Host { fields, .. } => {
+            Self::Host { fields, .. } => {
                 for field in fields {
                     if let HostField::Option(name, value) = field {
                         if name == "host-name" {
@@ -123,7 +128,13 @@ fn host_block(input: &str) -> IResult<&str, HostFileItem> {
     let (input, fields) = multi::many1(preceded(anyspace0, host_field))(input)?;
     let (input, _) = anyspace1(input)?;
     let (input, _) = complete::char('}')(input)?;
-    Ok((input, HostFileItem::Host { label: name, fields }))
+    Ok((
+        input,
+        HostFileItem::Host {
+            label: name,
+            fields,
+        },
+    ))
 }
 
 #[derive(Debug, PartialEq)]
@@ -140,6 +151,8 @@ fn host_field(input: &str) -> IResult<&str, HostField> {
         host_field_fixed_address,
         host_field_option,
         host_field_set_hostname_override,
+        host_field_default_lease_time,
+        host_field_max_lease_time,
     ))(input)?;
     let (input, _) = anyspace0(input)?;
     let (input, _) = complete::char(';')(input)?;
@@ -183,6 +196,25 @@ fn host_field_set_hostname_override(input: &str) -> IResult<&str, HostField> {
     ))
 }
 
+fn host_field_default_lease_time(input: &str) -> IResult<&str, HostField> {
+    let (input, _) = bytes::complete::tag("default-lease-time")(input)?;
+    let (input, _) = anyspace1(input)?;
+    let (input, s) = complete::digit1(input)?;
+    let (input, _) = anyspace0(input)?;
+    Ok((
+        input,
+        HostField::Ignored(format!("default-lease-time {s}")),
+    ))
+}
+
+fn host_field_max_lease_time(input: &str) -> IResult<&str, HostField> {
+    let (input, _) = bytes::complete::tag("max-lease-time")(input)?;
+    let (input, _) = anyspace1(input)?;
+    let (input, s) = complete::digit1(input)?;
+    let (input, _) = anyspace0(input)?;
+    Ok((input, HostField::Ignored(format!("max-lease-time {s}"))))
+}
+
 fn subnet_block(input: &str) -> IResult<&str, HostFileItem> {
     let (input, _) = bytes::complete::tag("subnet")(input)?;
     let (input, _) = anyspace1(input)?;
@@ -200,7 +232,7 @@ fn subnet_block(input: &str) -> IResult<&str, HostFileItem> {
 }
 
 fn subnet_item(input: &str) -> IResult<&str, ()> {
-    let (input, _) = preceded(
+    let (input, ()) = preceded(
         anyspace0,
         alt((
             pool_block,
@@ -240,7 +272,7 @@ fn pool_block(input: &str) -> IResult<&str, ()> {
 
 fn pool_field(input: &str) -> IResult<&str, ()> {
     let (input, _) = anyspace0(input)?;
-    let (input, _) = alt((pool_field_option, pool_field_range))(input)?;
+    let (input, ()) = alt((pool_field_option, pool_field_range))(input)?;
     let (input, _) = anyspace0(input)?;
     let (input, _) = complete::char(';')(input)?;
     let (input, _) = anyspace0(input)?;
@@ -370,6 +402,7 @@ fn val_int_string(input: &str) -> IResult<&str, String> {
 
 #[cfg(test)]
 mod tests {
+    #![allow(clippy::unwrap_used, clippy::expect_used)]
     use crate::dhcp_parsers::anyspace0;
 
     use super::*;
@@ -397,7 +430,14 @@ mod tests {
 
     #[test]
     fn test_host_block() {
-        let (input, HostFileItem::Host { label: name, fields }) = host_block(TEST_HOST).unwrap() else {
+        let (
+            input,
+            HostFileItem::Host {
+                label: name,
+                fields,
+            },
+        ) = host_block(TEST_HOST).unwrap()
+        else {
             panic!("Failed to parse host block");
         };
         assert_eq!(input, "");
@@ -435,7 +475,7 @@ mod tests {
 
     #[test]
     fn test_subnet_item() {
-        let (input, _) = subnet_item(
+        let (input, ()) = subnet_item(
             r#"pool {
         option domain-name-servers 192.168.1.1;
         range 192.168.1.10 192.168.1.254;
@@ -447,7 +487,7 @@ mod tests {
 
     #[test]
     fn test_pool_block() {
-        let (input, _) = pool_block(
+        let (input, ()) = pool_block(
             r#"pool {
         option domain-name-servers 192.168.1.1;
         range 192.168.1.10 192.168.1.254;
@@ -460,7 +500,7 @@ mod tests {
     #[test]
     fn test_subnet_option() {
         let input = "option routers 192.168.1.1";
-        let (input, _) = subnet_option(input).unwrap();
+        let (input, ()) = subnet_option(input).unwrap();
         assert_eq!(input, "");
     }
 
@@ -520,7 +560,10 @@ authoritative;"#;
                 HostFileItem::Directive("default-lease-time".to_string(), Some("7200".to_string())),
                 HostFileItem::Directive("max-lease-time".to_string(), Some("86400".to_string())),
                 HostFileItem::Directive("log-facility".to_string(), Some("local7".to_string())),
-                HostFileItem::Directive("one-lease-per-client".to_string(), Some("true".to_string())),
+                HostFileItem::Directive(
+                    "one-lease-per-client".to_string(),
+                    Some("true".to_string())
+                ),
                 HostFileItem::Directive("deny".to_string(), Some("duplicates".to_string())),
                 HostFileItem::Directive("ping-check".to_string(), Some("true".to_string())),
                 HostFileItem::Directive(
@@ -529,6 +572,21 @@ authoritative;"#;
                 ),
                 HostFileItem::Directive("authoritative".to_string(), None),
             ]
-        )
+        );
+    }
+
+    #[test]
+    fn test_default_lease_and_max_lease_times() {
+        let input = r#"host s_lan_16 {
+  hardware ethernet f0:b3:ec:25:8c:2d;
+  fixed-address 10.0.0.50;
+  option host-name "Big-Apple";
+  set hostname-override = config-option host-name;
+  default-lease-time 86400;
+  max-lease-time 7776000;
+}"#;
+
+        let (input, _) = host_block(input).unwrap();
+        assert_eq!(input, "");
     }
 }

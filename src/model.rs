@@ -1,17 +1,10 @@
-use std::{net::Ipv4Addr, str::FromStr};
+use std::{net::Ipv4Addr, sync::Arc};
 
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 
-/*
-lease 10.0.1.199 {
-  starts 0 2022/11/20 21:27:34;
-  ends 0 2022/11/20 21:29:34;
-  tstp 0 2022/11/20 21:29:34;
-  cltt 0 2022/11/20 21:27:34;
-  hardware ethernet 12:6d:88:95:58:89;
-}
-*/
+pub use crate::macaddr::MacAddr;
+use crate::vendor_macs::VendorMapping;
 
 pub type LeaseTime = Option<DateTime<Utc>>;
 
@@ -26,6 +19,16 @@ pub struct Lease {
     pub client_hostname: Option<String>,
 }
 
+impl Lease {
+    pub fn is_expired(&self) -> bool {
+        if let Some(ends) = self.ends {
+            ends < Utc::now()
+        } else {
+            false
+        }
+    }
+}
+
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Host {
     pub fixed_address: Ipv4Addr,
@@ -33,52 +36,141 @@ pub struct Host {
     pub hostname: Option<String>,
 }
 
-#[derive(Debug, Clone, PartialEq)]
-pub struct MacAddr([u8; 6]);
-
-impl From<[u8; 6]> for MacAddr {
-    fn from(bytes: [u8; 6]) -> Self {
-        MacAddr(bytes)
-    }
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(tag = "type")]
+pub enum LeaseType {
+    #[serde(rename = "active")]
+    Active { since: LeaseTime, until: LeaseTime },
+    #[serde(rename = "expired")]
+    Expired { since: LeaseTime },
+    #[serde(rename = "static")]
+    Static,
 }
 
-impl FromStr for MacAddr {
-    type Err = String;
+#[derive(Debug, Serialize, Deserialize)]
+pub struct Device {
+    address: Ipv4Addr,
 
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        let mut bytes = [0u8; 6];
-        let mut i = 0;
-        for byte in s.split(':') {
-            if i >= 6 {
-                return Err(format!("Invalid MAC address: {}", s));
+    hardware_ethernet: MacAddr,
+
+    #[serde(skip_serializing_if = "Option::is_none")]
+    hostname: Option<String>,
+
+    #[serde(skip_serializing_if = "Option::is_none")]
+    vendor: Option<String>,
+
+    lease: LeaseType,
+
+    #[serde(skip_serializing_if = "Option::is_none")]
+    last_seen: LeaseTime,
+}
+
+impl Device {
+    pub fn from_lease(lease: &Lease, vendor_mapping: &Arc<VendorMapping>) -> Self {
+        let lease_type = if lease.is_expired() {
+            LeaseType::Expired { since: lease.ends }
+        } else {
+            LeaseType::Active {
+                since: lease.starts,
+                until: lease.ends,
             }
-            bytes[i] =
-                u8::from_str_radix(byte, 16).map_err(|e| format!("Invalid MAC address: {}", e))?;
-            i += 1;
+        };
+
+        let vendor = vendor_mapping
+            .get_vendor_name(&lease.hardware_ethernet.clone())
+            .map(std::string::ToString::to_string);
+
+        Self {
+            address: lease.address,
+            hardware_ethernet: lease.hardware_ethernet.clone(),
+            hostname: lease.client_hostname.clone(),
+            vendor,
+            lease: lease_type,
+            last_seen: lease.cltt,
         }
-        if i != 6 {
-            return Err(format!("Invalid MAC address: {}", s));
+    }
+
+    pub fn from_host(host: &Host, vendor_mapping: &Arc<VendorMapping>) -> Self {
+        let vendor = vendor_mapping
+            .get_vendor_name(&host.hardware_ethernet.clone())
+            .map(std::string::ToString::to_string);
+
+        Self {
+            address: host.fixed_address,
+            hardware_ethernet: host.hardware_ethernet.clone(),
+            hostname: host.hostname.clone(),
+            vendor,
+            lease: LeaseType::Static,
+            last_seen: None,
         }
-        Ok(MacAddr(bytes))
+    }
+
+    pub fn from_leases_and_hosts(
+        leases: &[&Lease],
+        hosts: &[&Host],
+        vendor_mapping: &Arc<VendorMapping>,
+    ) -> Vec<Self> {
+        let mut devices = Vec::new();
+        devices.reserve(leases.len() + hosts.len());
+
+        for lease in leases {
+            devices.push(Self::from_lease(lease, vendor_mapping));
+        }
+
+        for host in hosts {
+            devices.push(Self::from_host(host, vendor_mapping));
+        }
+
+        devices
     }
 }
 
-impl Serialize for MacAddr {
-    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
-        let s = format!(
-            "{:02x}:{:02x}:{:02x}:{:02x}:{:02x}:{:02x}",
-            self.0[0], self.0[1], self.0[2], self.0[3], self.0[4], self.0[5]
-        );
-        serializer.serialize_str(&s)
+pub trait FindByIp {
+    type Item;
+
+    fn find_by_ip(&self, ip: Ipv4Addr) -> Vec<&Self::Item>;
+}
+
+pub trait FindByMac {
+    type Item;
+
+    fn find_by_mac(&self, mac: &MacAddr) -> Vec<&Self::Item>;
+}
+
+impl FindByIp for Vec<Lease> {
+    type Item = Lease;
+
+    fn find_by_ip(&self, ip: Ipv4Addr) -> Vec<&Self::Item> {
+        self.iter().filter(|lease| lease.address == ip).collect()
     }
 }
 
-// do Deserialize
-impl<'de> Deserialize<'de> for MacAddr {
-    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
-        let s = String::deserialize(deserializer)?;
-        MacAddr::from_str(&s).map_err(serde::de::Error::custom)
+impl FindByMac for Vec<Lease> {
+    type Item = Lease;
+
+    fn find_by_mac(&self, mac: &MacAddr) -> Vec<&Self::Item> {
+        self.iter()
+            .filter(|lease| lease.hardware_ethernet == *mac)
+            .collect()
     }
 }
 
+impl FindByIp for Vec<Host> {
+    type Item = Host;
 
+    fn find_by_ip(&self, ip: Ipv4Addr) -> Vec<&Self::Item> {
+        self.iter()
+            .filter(|host| host.fixed_address == ip)
+            .collect()
+    }
+}
+
+impl FindByMac for Vec<Host> {
+    type Item = Host;
+
+    fn find_by_mac(&self, mac: &MacAddr) -> Vec<&Self::Item> {
+        self.iter()
+            .filter(|host| host.hardware_ethernet == *mac)
+            .collect()
+    }
+}
