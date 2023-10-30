@@ -13,6 +13,9 @@ pub struct Args {
 
     #[arg(short, long, default_value = "0.0.0.0:8086")]
     pub listen: SocketAddr,
+
+    #[arg(long)]
+    pub write_pid: Option<PathBuf>,
 }
 
 impl Args {

@@ -41,11 +41,7 @@ pub async fn new() -> Result<App> {
 const WATCH_TIMEOUT: u64 = 2;
 const WATCH_TICK_RATE: u64 = 2;
 
-pub async fn watch_files(
-    state: App,
-    dhcpd_config: &PathBuf,
-    dhcpd_leases: &PathBuf,
-) -> Result<()> {
+pub async fn watch_files(state: App, dhcpd_config: &PathBuf, dhcpd_leases: &PathBuf) -> Result<()> {
     let dhcpd_config = std::fs::canonicalize(dhcpd_config)?;
     let dhcpd_leases = std::fs::canonicalize(dhcpd_leases)?;
 

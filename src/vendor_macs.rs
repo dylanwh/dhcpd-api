@@ -76,6 +76,8 @@ impl VendorMapping {
     }
 
     pub fn get_vendor_name(&self, mac: &MacAddr) -> Option<&str> {
-        self.0.get_ancestor_value(&mac.into()).map(std::string::String::as_str)
+        self.0
+            .get_ancestor_value(&mac.into())
+            .map(std::string::String::as_str)
     }
 }

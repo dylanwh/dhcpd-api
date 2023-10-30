@@ -201,10 +201,7 @@ fn host_field_default_lease_time(input: &str) -> IResult<&str, HostField> {
     let (input, _) = anyspace1(input)?;
     let (input, s) = complete::digit1(input)?;
     let (input, _) = anyspace0(input)?;
-    Ok((
-        input,
-        HostField::Ignored(format!("default-lease-time {s}")),
-    ))
+    Ok((input, HostField::Ignored(format!("default-lease-time {s}"))))
 }
 
 fn host_field_max_lease_time(input: &str) -> IResult<&str, HostField> {
