@@ -5,58 +5,31 @@
 # BEFORE: LOGIN
 # KEYWORD: nojail
 
+# shellcheck disable=SC1091
 . /etc/rc.subr
 
 name="dhcpd_api"
+# shellcheck disable=SC2034
 rcvar=dhcpd_api_enable
 
 load_rc_config $name
 
-pidfile="/var/run/${name}.pid"
 
-: ${dhcpd_api_enable:=NO}
-: ${dhcpd_api_flags:=""}
+: "${dhcpd_api_enable:=NO}"
+: "${dhcpd_api_pidfile:="/var/run/dhcpd_api.pid"}"
 
-rtart_cmd="${name}_start"
-status_cmd="${name}_status"
-stop_cmd="${name}_stop"
 
-extra_commands="status"
+pidfile="${dhcpd_api_pidfile}"
+
+# shellcheck disable=SC2034
+procname="daemon"
+
+# shellcheck disable=SC2034
+start_cmd="dhcpd_api_start"
 
 dhcpd_api_start()
 {
-    info "Starting ${name}."
-    /usr/local/bin/dhcpd_api --write-pid=${pidfile} ${dhcpd_api_flags} | logger -t dhcpd_api &
-}
-
-
-dhcpd_api_status()
-{
-    if [ -f ${pidfile} ]; then
-        pid=`cat ${pidfile}`
-        if ps -p ${pid} | grep -q ${pid}; then
-            echo "${name} is running as pid ${pid}."
-        else
-            echo "${name} is not running (pidfile exists)."
-        fi
-    else
-        echo "${name} is not running."
-    fi
-}
-
-dhcpd_api_stop()
-{
-    info "Stopping ${name}."
-    if [ -f ${pidfile} ]; then
-        pid=`cat ${pidfile}`
-        if ps -p ${pid} | grep -q ${pid}; then
-            kill ${pid}
-        else
-            echo "${name} is not running (pidfile exists)."
-        fi
-    else
-        echo "${name} is not running."
-    fi
+    daemon -S -r -f -u dhcpd_api -P "$pidfile" -R 10 /usr/local/bin/dhcpd-api &
 }
 
 run_rc_command "$1"

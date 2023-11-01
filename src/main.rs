@@ -36,10 +36,6 @@ use crate::model::{FindByIp, FindByMac};
 async fn main() -> Result<()> {
     let args = Args::new();
 
-    if let Some(pid_file) = args.write_pid {
-        tokio::fs::write(pid_file, std::process::id().to_string()).await?;
-    }
-
     let state = state::new().await?;
     state::watch_files(state.clone(), &args.dhcpd_config, &args.dhcpd_leases).await?;
 
