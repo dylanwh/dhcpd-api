@@ -11,7 +11,6 @@ authors = ["Dylan Hardison <dylan@hardison.net>"]
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-async-watcher = "0.2.0"
 axum = { version = "0.6.20", features = ["headers"] }
 axum-error = "0.2.0"
 axum-macros = "0.3.8"

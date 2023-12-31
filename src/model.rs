@@ -110,8 +110,7 @@ impl Device {
         hosts: &[&Host],
         vendor_mapping: &Arc<VendorMapping>,
     ) -> Vec<Self> {
-        let mut devices = Vec::new();
-        devices.reserve(leases.len() + hosts.len());
+        let mut devices = Vec::with_capacity(leases.len() + hosts.len());
 
         for lease in leases {
             devices.push(Self::from_lease(lease, vendor_mapping));

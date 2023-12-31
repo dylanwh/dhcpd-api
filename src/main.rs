@@ -54,7 +54,7 @@ async fn main() -> Result<()> {
     Ok(())
 }
 
-async fn index(State(state): State<App>) -> Json<Vec<Device>> {
+async fn index(State(state): State<App>) -> Json<serde_json::Value> {
     let mut devices = Vec::new();
 
     {
@@ -71,7 +71,14 @@ async fn index(State(state): State<App>) -> Json<Vec<Device>> {
         }
     }
 
-    Json(devices)
+    Json(json!({
+        "devices": devices,
+        "last_update": {
+            "leases": state.last_update_leases.read().await.map(|d| d.to_rfc3339()),
+            "hosts": state.last_update_hosts.read().await.map(|d| d.to_rfc3339()),
+            "check": state.last_update_check.read().await.map(|d| d.to_rfc3339()),
+        }
+    }))
 }
 
 async fn whoami(

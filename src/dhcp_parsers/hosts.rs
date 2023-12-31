@@ -472,10 +472,10 @@ mod tests {
     #[test]
     fn test_subnet_item() {
         let (input, ()) = subnet_item(
-            r#"pool {
+            r"pool {
         option domain-name-servers 192.168.1.1;
         range 192.168.1.10 192.168.1.254;
-        }"#,
+        }",
         )
         .unwrap();
         assert_eq!(input, "");
@@ -484,10 +484,10 @@ mod tests {
     #[test]
     fn test_pool_block() {
         let (input, ()) = pool_block(
-            r#"pool {
+            r"pool {
         option domain-name-servers 192.168.1.1;
         range 192.168.1.10 192.168.1.254;
-        }"#,
+        }",
         )
         .unwrap();
         assert_eq!(input, "");
@@ -538,14 +538,14 @@ option pac-webui code 252 = text;"#;
 
     #[test]
     fn test_directive() {
-        let input = r#"default-lease-time 7200;
+        let input = r"default-lease-time 7200;
 max-lease-time 86400;
 log-facility local7;
 one-lease-per-client true;
 deny duplicates;
 ping-check true;
 update-conflict-detection false;
-authoritative;"#;
+authoritative;";
 
         let (input, directives) = multi::many1(terminated(directive, anyspace0))(input).unwrap();
         assert_eq!(input, "");
