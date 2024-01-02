@@ -75,7 +75,7 @@ impl fmt::Display for MacAddr {
     }
 }
 
-#[derive(Debug, Eq, PartialEq)]
+#[derive(Debug, Clone, Eq, PartialEq)]
 pub struct MacPrefix(Nibblet);
 
 impl From<&MacAddr> for MacPrefix {

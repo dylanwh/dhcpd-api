@@ -9,6 +9,7 @@ use eyre::{ContextCompat, Result};
 use quick_xml::{events::Event, name::QName, reader::Reader};
 use radix_trie::Trie;
 
+#[derive(Debug, Clone)]
 pub struct VendorMapping(Trie<MacPrefix, String>);
 
 impl VendorMapping {

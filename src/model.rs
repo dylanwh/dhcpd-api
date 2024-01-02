@@ -1,4 +1,4 @@
-use std::{net::Ipv4Addr, sync::Arc};
+use std::net::Ipv4Addr;
 
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
@@ -8,7 +8,7 @@ use crate::vendor_macs::VendorMapping;
 
 pub type LeaseTime = Option<DateTime<Utc>>;
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Lease {
     pub address: Ipv4Addr,
     pub starts: LeaseTime,
@@ -29,7 +29,7 @@ impl Lease {
     }
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Host {
     pub fixed_address: Ipv4Addr,
     pub hardware_ethernet: MacAddr,
@@ -47,17 +47,17 @@ pub enum LeaseType {
     Static,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
-pub struct Device {
-    address: Ipv4Addr,
+#[derive(Debug, Serialize)]
+pub struct Device<'a> {
+    address: &'a Ipv4Addr,
 
-    hardware_ethernet: MacAddr,
-
-    #[serde(skip_serializing_if = "Option::is_none")]
-    hostname: Option<String>,
+    hardware_ethernet: &'a MacAddr,
 
     #[serde(skip_serializing_if = "Option::is_none")]
-    vendor: Option<String>,
+    hostname: Option<&'a str>,
+
+    #[serde(skip_serializing_if = "Option::is_none")]
+    vendor: Option<&'a str>,
 
     lease: LeaseType,
 
@@ -65,8 +65,8 @@ pub struct Device {
     last_seen: LeaseTime,
 }
 
-impl Device {
-    pub fn from_lease(lease: &Lease, vendor_mapping: &Arc<VendorMapping>) -> Self {
+impl<'a> Device<'a> {
+    pub fn from_lease(lease: &'a Lease, vendor_mapping: &'a VendorMapping) -> Self {
         let lease_type = if lease.is_expired() {
             LeaseType::Expired { since: lease.ends }
         } else {
@@ -76,29 +76,25 @@ impl Device {
             }
         };
 
-        let vendor = vendor_mapping
-            .get_vendor_name(&lease.hardware_ethernet.clone())
-            .map(std::string::ToString::to_string);
+        let vendor = vendor_mapping.get_vendor_name(&lease.hardware_ethernet);
 
         Self {
-            address: lease.address,
-            hardware_ethernet: lease.hardware_ethernet.clone(),
-            hostname: lease.client_hostname.clone(),
+            address: &lease.address,
+            hardware_ethernet: &lease.hardware_ethernet,
+            hostname: lease.client_hostname.as_deref(),
             vendor,
             lease: lease_type,
             last_seen: lease.cltt,
         }
     }
 
-    pub fn from_host(host: &Host, vendor_mapping: &Arc<VendorMapping>) -> Self {
-        let vendor = vendor_mapping
-            .get_vendor_name(&host.hardware_ethernet.clone())
-            .map(std::string::ToString::to_string);
+    pub fn from_host(host: &'a Host, vendor_mapping: &'a VendorMapping) -> Self {
+        let vendor = vendor_mapping.get_vendor_name(&host.hardware_ethernet);
 
         Self {
-            address: host.fixed_address,
-            hardware_ethernet: host.hardware_ethernet.clone(),
-            hostname: host.hostname.clone(),
+            address: &host.fixed_address,
+            hardware_ethernet: &host.hardware_ethernet,
+            hostname: host.hostname.as_deref(),
             vendor,
             lease: LeaseType::Static,
             last_seen: None,
@@ -106,9 +102,9 @@ impl Device {
     }
 
     pub fn from_leases_and_hosts(
-        leases: &[&Lease],
-        hosts: &[&Host],
-        vendor_mapping: &Arc<VendorMapping>,
+        leases: &'a [&Lease],
+        hosts: &'a [&Host],
+        vendor_mapping: &'a VendorMapping,
     ) -> Vec<Self> {
         let mut devices = Vec::with_capacity(leases.len() + hosts.len());
 
