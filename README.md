@@ -1,10 +1,9 @@
 # dhcpd-api
 
-This is a Rust project that provides an API for interacting with isc-dhcpd.
+This is a simple API for extracting client information from the ISC DHCP server. It is designed to be used on OPNSense, but should work any environment that uses the ISC DHCP server.
 
-## Overview
-
-dhcpd-api is a Rust library that provides a high-level API to interact with the Internet Systems Consortium DHCP Server (isc dhcpd). It allows developers to easily manage DHCP configurations, leases, and more.
+This tool is designed to be used with [hostapd-api](https://github.com/dylanwh/hostapd-api),
+and together they can be used to understand certain aspects of a network.
 
 ## Features
 
