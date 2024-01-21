@@ -1,4 +1,3 @@
-use eyre::Result;
 use nom::{
     branch::alt,
     bytes,
@@ -17,10 +16,16 @@ use crate::model::{Host, MacAddr};
 
 use super::{anyspace0, anyspace1, keyword_hardware_ethernet, val_address, val_string};
 
-pub fn parse(input: &str) -> Result<Vec<Host>> {
-    let (_, items) = dhcpd_conf(input)
-        .finish()
-        .map_err(|e| eyre::eyre!("Failed to parse dhcpd.conf: {}", e))?;
+#[derive(Debug, thiserror::Error)]
+#[error("error parsing dhcpd hosts: {message}")]
+pub struct ParseError {
+    message: String,
+}
+
+pub fn parse(input: &str) -> Result<Vec<Host>, ParseError> {
+    let (_, items) = dhcpd_conf(input).finish().map_err(|e| ParseError {
+        message: e.to_string(),
+    })?;
     let mut hosts = vec![];
 
     for item in items {

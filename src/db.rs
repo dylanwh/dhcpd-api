@@ -5,11 +5,11 @@ use std::{
 };
 
 use chrono::{DateTime, Utc};
-use eyre::{Context, Result};
 use tokio::sync::Mutex;
+use tokio_util::sync::CancellationToken;
 
 use crate::{
-    dhcp_parsers::{hosts, leases},
+    dhcp_parsers::{self, hosts, leases},
     model::{Host, Lease},
     vendor_macs::VendorMapping,
 };
@@ -28,8 +28,23 @@ pub struct Database {
     pub last_update_check: Option<DateTime<Utc>>,
 }
 
+#[derive(Debug, thiserror::Error)]
+pub enum Error {
+    #[error(transparent)]
+    VendorMacs(#[from] crate::vendor_macs::Error),
+
+    #[error(transparent)]
+    HostsParser(#[from] dhcp_parsers::HostsParseError),
+
+    #[error(transparent)]
+    LeasesParser(#[from] dhcp_parsers::LeasesParseError),
+
+    #[error("io error: {0}")]
+    Io(#[from] std::io::Error),
+}
+
 impl Database {
-    pub async fn new() -> Result<Self> {
+    pub async fn new() -> Result<Self, Error> {
         let leases = Vec::new();
         let hosts = Vec::new();
         let vendor_mapping = VendorMapping::fetch(true).await?;
@@ -49,38 +64,47 @@ impl Database {
     }
 }
 
-pub async fn watch_files(db: DB, dhcpd_config: &PathBuf, dhcpd_leases: &PathBuf) -> Result<()> {
+pub async fn watch_files(
+    db: DB,
+    shutdown: CancellationToken,
+    dhcpd_config: &PathBuf,
+    dhcpd_leases: &PathBuf,
+) -> Result<(), Error> {
     let dhcpd_config = std::fs::canonicalize(dhcpd_config)?;
     let dhcpd_leases = std::fs::canonicalize(dhcpd_leases)?;
 
     update_leases(db.clone(), &dhcpd_leases).await?;
     update_hosts(db.clone(), &dhcpd_config).await?;
 
-    tokio::spawn(async move {
-        // check for changes every 60 seconds, using just mtime stat calls.
-        let mut interval = tokio::time::interval(Duration::from_secs(10));
-        loop {
-            let (last_update_leases, last_update_hosts) = {
-                let mut db = db.lock().await;
-                db.last_update_check.replace(Utc::now());
-                (db.last_update_leases, db.last_update_hosts)
-            };
-
-            if file_changed(last_update_leases, &dhcpd_leases).await {
-                if let Err(e) = update_leases(db.clone(), &dhcpd_leases).await {
-                    tracing::error!("Failed to update leases: {}", e);
-                }
-            }
-            if file_changed(last_update_hosts, &dhcpd_config).await {
-                if let Err(e) = update_hosts(db.clone(), &dhcpd_config).await {
-                    tracing::error!("Failed to update hosts: {}", e);
-                }
-            }
-            interval.tick().await;
+    // check for changes every 60 seconds, using just mtime stat calls.
+    let mut interval = tokio::time::interval(Duration::from_secs(10));
+    loop {
+        tokio::select! {
+            _ = interval.tick() => check_files(db.clone(), &dhcpd_config, &dhcpd_leases).await,
+            () = shutdown.cancelled() => break,
         }
-    });
+    }
 
     Ok(())
+}
+
+async fn check_files(db: DB, dhcpd_config: &PathBuf, dhcpd_leases: &PathBuf) {
+    let (last_update_leases, last_update_hosts) = {
+        let mut db = db.lock().await;
+        db.last_update_check.replace(Utc::now());
+        (db.last_update_leases, db.last_update_hosts)
+    };
+
+    if file_changed(last_update_leases, dhcpd_leases).await {
+        update_leases(db.clone(), dhcpd_leases)
+            .await
+            .unwrap_or_else(|e| tracing::error!("Failed to update leases: {}", e));
+    }
+    if file_changed(last_update_hosts, dhcpd_config).await {
+        update_hosts(db.clone(), dhcpd_config)
+            .await
+            .unwrap_or_else(|e| tracing::error!("Failed to update hosts: {}", e));
+    }
 }
 
 async fn file_changed(last_update: Option<DateTime<Utc>>, file: &PathBuf) -> bool {
@@ -107,17 +131,13 @@ async fn file_changed(last_update: Option<DateTime<Utc>>, file: &PathBuf) -> boo
     modified > last_update
 }
 
-pub async fn update_leases<P>(db: DB, dhcpd_leases: P) -> Result<()>
+pub async fn update_leases<P>(db: DB, dhcpd_leases: P) -> Result<(), Error>
 where
     P: AsRef<Path>,
 {
     let dhcpd_leases = dhcpd_leases.as_ref();
     let buf = tokio::fs::read_to_string(dhcpd_leases)
-        .await
-        .wrap_err(format!(
-            "Failed to read dhcpd leases: {}",
-            dhcpd_leases.to_string_lossy()
-        ))?;
+        .await?;
     let new_leases = leases::parse(&buf)?;
     {
         let mut db = db.lock().await;
@@ -127,17 +147,13 @@ where
     Ok(())
 }
 
-pub async fn update_hosts<P>(db: DB, dhcpd_config: P) -> Result<()>
+pub async fn update_hosts<P>(db: DB, dhcpd_config: P) -> Result<(), Error>
 where
     P: AsRef<Path>,
 {
     let dhcpd_config = dhcpd_config.as_ref();
     let buf = tokio::fs::read_to_string(dhcpd_config)
-        .await
-        .wrap_err(format!(
-            "Failed to read dhcpd config: {}",
-            dhcpd_config.to_string_lossy()
-        ))?;
+        .await?;
     let new_hosts = hosts::parse(&buf)?;
     {
         let mut db = db.lock().await;

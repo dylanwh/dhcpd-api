@@ -1,7 +1,6 @@
 use std::net::Ipv4Addr;
 
 use chrono::{DateTime, NaiveDate, NaiveDateTime, NaiveTime, Utc};
-use eyre::{eyre, ContextCompat, Result};
 use nom::{
     branch::alt,
     bytes,
@@ -44,10 +43,21 @@ enum LeaseField {
     Ignore(String),
 }
 
-pub fn parse(input: &str) -> Result<Vec<Lease>> {
+#[derive(Debug, thiserror::Error)]
+pub enum ParseError {
+    #[error("error parsing lease: {message}")]
+    Nom { message: String },
+
+    #[error("lease missing hardware ethernet field")]
+    MissingHardwareEthernet,
+}
+
+pub fn parse(input: &str) -> Result<Vec<Lease>, ParseError> {
     let (_, lease_file_items) = all_consuming(lease_file_items)(input)
         .finish()
-        .map_err(|e| eyre!("parse error: {}", e))?;
+        .map_err(|e| ParseError::Nom {
+            message: e.to_string(),
+        })?;
     let mut leases = Vec::new();
 
     for item in lease_file_items {
@@ -85,7 +95,7 @@ pub fn parse(input: &str) -> Result<Vec<Lease>> {
                 tstp,
                 cltt,
                 hardware_ethernet: hardware_ethernet
-                    .wrap_err(eyre!("lease missing hardware ethernet"))?,
+                    .ok_or(ParseError::MissingHardwareEthernet)?,
                 client_hostname,
             };
             leases.push(lease);

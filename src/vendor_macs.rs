@@ -5,22 +5,46 @@ use std::str::FromStr;
 
 use crate::macaddr::{MacAddr, MacPrefix};
 
-use eyre::{ContextCompat, Result};
-use quick_xml::{events::Event, name::QName, reader::Reader};
+use quick_xml::{events::{Event, attributes::AttrError}, name::QName, reader::Reader};
 use radix_trie::Trie;
 
 #[derive(Debug, Clone)]
 pub struct VendorMapping(Trie<MacPrefix, String>);
 
+#[derive(Debug, thiserror::Error)]
+pub enum Error {
+    #[error("failed to get cache dir")]
+    NoCacheDir,
+
+    #[error("http request error: {0}")]
+    Fetch(#[from] reqwest::Error),
+
+    #[error("system time error: {0}")]
+    SystemTime(#[from] std::time::SystemTimeError),
+
+    #[error("io error: {0}")]
+    Io(#[from] std::io::Error),
+
+    #[error("xml attribute error: {0}")]
+    XmlAttr(#[from] AttrError),
+
+    #[error("xml error: {0}")]
+    XmlParse(#[from] quick_xml::Error),
+
+    #[error("invalid mac prefix: {0}")]
+    InvalidMacPrefix(#[from] crate::macaddr::InvalidMacPrefix),
+}
+
 impl VendorMapping {
-    pub async fn fetch(cache: bool) -> Result<Self> {
+    pub async fn fetch(cache: bool) -> Result<Self, Error> {
         let cache_file = dirs::cache_dir()
-            .wrap_err("Failed to get cache dir")?
+            .ok_or(Error::NoCacheDir)?
             .join("dhcpd-api")
             .join("vendorMacs.xml");
 
         if cache && cache_file.exists() {
-            let metadata = tokio::fs::metadata(&cache_file).await?;
+            let metadata = tokio::fs::metadata(&cache_file)
+                .await?;
             if metadata.modified()?.elapsed()?.as_secs() < VENDORS_MACS_CACHE_SECS {
                 let xml = tokio::fs::read_to_string(cache_file).await?;
                 return Self::parse(&xml);
@@ -28,14 +52,14 @@ impl VendorMapping {
         }
 
         let xml = reqwest::get(VENDOR_MACS_URL).await?.text().await?;
-        let dir = cache_file.parent().wrap_err("Failed to get cache dir")?;
+        let dir = cache_file.parent().ok_or(Error::NoCacheDir)?.to_owned();
         tokio::fs::create_dir_all(dir).await?;
         tokio::fs::write(cache_file, &xml).await?;
 
         Self::parse(&xml)
     }
 
-    pub fn parse(xml: &str) -> Result<Self> {
+    pub fn parse(xml: &str) -> Result<Self, Error> {
         let mut reader = Reader::from_str(xml);
         reader.trim_text(true);
         let mut vendor_mapping = Trie::new();

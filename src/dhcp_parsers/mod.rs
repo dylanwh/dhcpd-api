@@ -17,6 +17,9 @@ use crate::model::MacAddr;
 pub mod hosts;
 pub mod leases;
 
+pub use hosts::ParseError as HostsParseError;
+pub use leases::ParseError as LeasesParseError;
+
 fn val_string(input: &str) -> IResult<&str, String> {
     let (input, _) = complete::char('"')(input)?;
     let (input, s) = many1(alt((str_octal_escape, str_char_escape, str_literal)))(input)?;
