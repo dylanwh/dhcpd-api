@@ -75,13 +75,14 @@ async fn main() -> Result<(), Error> {
     tracker.spawn(async move {
         db::watch_files(
             files_db,
-            files_shutdown,
+            files_shutdown.clone(),
             &args.dhcpd_config,
             &args.dhcpd_leases,
         )
         .await
         .unwrap_or_else(|e| {
-            eprintln!("Error watching files: {e}");
+            tracing::error!("watch_files error: {}", e);
+            files_shutdown.cancel();
         });
     });
 
