@@ -5,7 +5,11 @@ use std::str::FromStr;
 
 use crate::macaddr::{MacAddr, MacPrefix};
 
-use quick_xml::{events::{Event, attributes::AttrError}, name::QName, reader::Reader};
+use quick_xml::{
+    events::{attributes::AttrError, Event},
+    name::QName,
+    reader::Reader,
+};
 use radix_trie::Trie;
 
 #[derive(Debug, Clone)]
@@ -43,8 +47,7 @@ impl VendorMapping {
             .join("vendorMacs.xml");
 
         if cache && cache_file.exists() {
-            let metadata = tokio::fs::metadata(&cache_file)
-                .await?;
+            let metadata = tokio::fs::metadata(&cache_file).await?;
             if metadata.modified()?.elapsed()?.as_secs() < VENDORS_MACS_CACHE_SECS {
                 let xml = tokio::fs::read_to_string(cache_file).await?;
                 return Self::parse(&xml);

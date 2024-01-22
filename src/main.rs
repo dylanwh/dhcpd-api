@@ -40,7 +40,7 @@ use axum::{
 use db::{Database, DB};
 use model::{Device, MacAddr};
 use serde_json::{json, Value};
-use tokio::{sync::Mutex, net::TcpListener};
+use tokio::{net::TcpListener, sync::Mutex};
 
 use crate::model::{FindByIp, FindByMac};
 
@@ -94,14 +94,19 @@ async fn main() -> Result<(), Error> {
         .route("/vendors", get(vendors))
         .with_state(db);
 
-    let listener = TcpListener::bind(args.listen).await.map_err(Error::Listen)?;
+    let listener = TcpListener::bind(args.listen)
+        .await
+        .map_err(Error::Listen)?;
     let axum_shutdown = shutdown.clone();
     tracker.spawn(async move {
-        let serve = axum::serve(listener, router)
-            .with_graceful_shutdown(async move {
-                axum_shutdown.cancelled().await;
-            })
-            .await;
+        let serve = axum::serve(
+            listener,
+            router.into_make_service_with_connect_info::<SocketAddr>(),
+        )
+        .with_graceful_shutdown(async move {
+            axum_shutdown.cancelled().await;
+        })
+        .await;
         if let Err(e) = serve {
             tracing::error!("server error: {}", e);
         }
@@ -164,10 +169,7 @@ async fn whoami(
     })))
 }
 
-async fn lookup_ip(
-    State(db): State<DB>,
-    Path(ip): Path<String>,
-) -> Result<Json<Value>, Error> {
+async fn lookup_ip(State(db): State<DB>, Path(ip): Path<String>) -> Result<Json<Value>, Error> {
     let ip = Ipv4Addr::from_str(&ip)?;
     let db = db.lock().await;
 
@@ -217,7 +219,10 @@ impl IntoResponse for Error {
             Error::Ipv6NotSupported => (StatusCode::BAD_REQUEST, "IPv6 not supported".to_string()),
             Error::InvalidIpAddr(e) => (StatusCode::BAD_REQUEST, e.to_string()),
             Error::InvalidMacAddr(e) => (StatusCode::BAD_REQUEST, e.to_string()),
-            _ => (StatusCode::INTERNAL_SERVER_ERROR, "Internal server error".to_string()),
+            _ => (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "Internal server error".to_string(),
+            ),
         };
 
         resp.into_response()

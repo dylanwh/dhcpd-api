@@ -94,8 +94,7 @@ pub fn parse(input: &str) -> Result<Vec<Lease>, ParseError> {
                 ends,
                 tstp,
                 cltt,
-                hardware_ethernet: hardware_ethernet
-                    .ok_or(ParseError::MissingHardwareEthernet)?,
+                hardware_ethernet: hardware_ethernet.ok_or(ParseError::MissingHardwareEthernet)?,
                 client_hostname,
             };
             leases.push(lease);

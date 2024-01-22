@@ -136,8 +136,7 @@ where
     P: AsRef<Path>,
 {
     let dhcpd_leases = dhcpd_leases.as_ref();
-    let buf = tokio::fs::read_to_string(dhcpd_leases)
-        .await?;
+    let buf = tokio::fs::read_to_string(dhcpd_leases).await?;
     let new_leases = leases::parse(&buf)?;
     {
         let mut db = db.lock().await;
@@ -152,8 +151,7 @@ where
     P: AsRef<Path>,
 {
     let dhcpd_config = dhcpd_config.as_ref();
-    let buf = tokio::fs::read_to_string(dhcpd_config)
-        .await?;
+    let buf = tokio::fs::read_to_string(dhcpd_config).await?;
     let new_hosts = hosts::parse(&buf)?;
     {
         let mut db = db.lock().await;

@@ -1,4 +1,4 @@
-use std::{fmt, str::FromStr, num::ParseIntError};
+use std::{fmt, num::ParseIntError, str::FromStr};
 
 use nibble_vec::Nibblet;
 use radix_trie::TrieKey;
@@ -53,7 +53,7 @@ impl FromStr for MacAddr {
         let mut bytes = [0u8; 6];
         let mut len = 0usize;
         for (i, byte) in s.split(':').enumerate() {
-            if i >= bytes.len()  {
+            if i >= bytes.len() {
                 return Err(InvalidMacAddr::Long);
             } else if byte.len() != 2 {
                 return Err(InvalidMacAddr::BadSegment);
